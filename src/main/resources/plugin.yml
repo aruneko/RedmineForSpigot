@@ -1,0 +1,20 @@
+name: Redmine for Spigot
+main: net.aruneko.redmineforspigot.Main
+version: 0.0.1
+commands:
+    project:
+        description: This command is related to Redmine projects.
+        usage: |
+          /<command> list - View project list.
+          /<command> [Project ID] - View details of a project which has the id.
+    issue:
+        description: This command is related to Redmine issues.
+        usage: |
+          /<command> list - View issue list.
+          /<command> list [Project ID] - View issues which has the id.
+          /<command> [Issue ID] - View details of a issue which has the id.
+          /<command> new [Project ID] [Tracker ID] [Priority ID] [Subject]
+    redmine:
+        description: This command is related to Redmine api.
+        usage: |
+          /<command> setApiKey [API key] - Set personal API access key.
