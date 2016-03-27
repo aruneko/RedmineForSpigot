@@ -1,6 +1,6 @@
 name: RedmineForSpigot
 main: net.aruneko.redmineforspigot.Main
-version: 0.0.1
+version: 1.0.0
 commands:
     project:
         description: This command is related to Redmine projects.
