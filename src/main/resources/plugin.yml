@@ -1,4 +1,4 @@
-name: Redmine for Spigot
+name: RedmineForSpigot
 main: net.aruneko.redmineforspigot.Main
 version: 0.0.1
 commands:
@@ -13,8 +13,12 @@ commands:
           /<command> list - View issue list.
           /<command> list [Project ID] - View issues which has the id.
           /<command> [Issue ID] - View details of a issue which has the id.
-          /<command> new [Project ID] [Tracker ID] [Priority ID] [Subject]
+          /<command> time [Issue ID] [Hours] [Activity ID] [Comments] - Create a new time entry.
+          /<command> new [Project ID] [Tracker ID] [Priority ID] [Subject] - Create a new issue.
     redmine:
         description: This command is related to Redmine api.
         usage: |
           /<command> setApiKey [API key] - Set personal API access key.
+          /<command> actid - Print Activity ID list.
+          /<command> trackid - Print Tracker ID list.
+          /<command> priorid - Print Priority ID list.

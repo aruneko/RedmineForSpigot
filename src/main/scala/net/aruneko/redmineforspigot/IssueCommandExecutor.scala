@@ -2,15 +2,18 @@ package net.aruneko.redmineforspigot
 
 import dispatch._
 import dispatch.Defaults._
-import org.bukkit.command.{Command, CommandSender, CommandExecutor}
-import org.bukkit.entity.Player
+import org.bukkit.ChatColor
+import org.bukkit.command.{Command, CommandExecutor, CommandSender, TabCompleter}
+
+import collection.JavaConverters._
+import scala.util.{Failure, Success}
 
 /**
   * Redmineチケットに関するコマンドを実行するクラス
   */
-class IssueCommandExecutor(config: Configuration) extends CommandExecutor {
+class IssueCommandExecutor(config: Configuration) extends CommandExecutor with TabCompleter {
   /**
-    * 実際にコマンドを実行するメソッド
+    * コマンドを実行するメソッド
     *
     * @param sender コマンド送信者
     * @param cmd    送信されたコマンド
@@ -19,36 +22,50 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor {
     * @return コマンドを実行した場合true、そうでなければfalse
     */
   override def onCommand(sender: CommandSender, cmd: Command, label: String, args: Array[String]): Boolean = {
-    // プレイヤーかどうか
-    val isPlayer = sender.isInstanceOf[Player]
-
-    if (Utils.canPingRedmine(config.url) && isPlayer && args.length >= 0) {
-      if (args.length == 1 && args(0).equalsIgnoreCase("list")) {
-        // チケット一覧を引っ張ってくるコマンド
-        issueList(sender)
-      } else if (args.length == 1 && Utils.stringToInt(args(0)).isDefined) {
-        // チケットの詳細を引っ張ってくるコマンド
-        issueDetails(sender, Utils.stringToInt(args(0)).get)
-      } else if (args.length == 2 && args(0).equalsIgnoreCase("list") && Utils.stringToInt(args(1)).isDefined) {
-        // プロジェクトIDごとのチケット一覧を表示するコマンド
-        issueListByProjectId(sender, Utils.stringToInt(args(1)).get)
-      } else if (args.length >= 5 && args(0).equalsIgnoreCase("new") && checkNewCommandArgs(sender, args)) {
-        // 新規チケットを発行するコマンド
-        pushNewIssue(sender, args)
-      } else {
-        false
-      }
-    } else if (!Utils.canPingRedmine(config.url)) {
-      // Redmineに接続できなかったとき
-      sender.sendMessage("Can't connect Redmine.")
-      true
-    } else if (!isPlayer) {
-      // サーバー側から実行された場合
-      sender.sendMessage("Only player can execute this command.")
-      true
+    if (Utils.canExecCommand(sender, config)) {
+      execCommand(sender, args)
     } else {
-      // 想定されていないケースの場合
-      false
+      true
+    }
+  }
+
+  /**
+    * 実行するコマンドの振り分け
+    * @param sender
+    * @param args
+    * @return
+    */
+  def execCommand(sender: CommandSender, args: Array[String]): Boolean = {
+    args match {
+      case Array(arg) if arg.equalsIgnoreCase("list") =>
+        printIssueList(sender)
+      case Array(num) if Utils.stringToInt(num).isDefined =>
+        issueDetails(sender, Utils.stringToInt(num).get)
+      case Array(arg, num) if arg.equalsIgnoreCase("list") && Utils.stringToInt(num).isDefined =>
+        issueListByProjectId(sender, Utils.stringToInt(num).get)
+      case Array(arg, _, _, _, _*) if arg.equalsIgnoreCase("time") && checkTimeCommandArgs(args) =>
+        createNewTimeEntry(sender, args)
+      case Array(arg, _, _, _, _, _*) if arg.equalsIgnoreCase("new") && checkNewCommandArgs(args) =>
+        pushNewIssue(sender, args)
+      case _ => false
+    }
+  }
+
+  /**
+    * Tab補完の実装
+    * @param sender
+    * @param cmd
+    * @param alias
+    * @param args
+    * @return 補完候補
+    */
+  override def onTabComplete(sender: CommandSender, cmd: Command, alias: String, args: Array[String]): java.util.List[String] = {
+    args.length match {
+      case 1 if args(0).length == 0 => List("list", "time", "new").asJava
+      case 1 if "list".startsWith(args(0)) => List("list").asJava
+      case 1 if "new".startsWith(args(0)) => List("new").asJava
+      case 1 if "time".startsWith(args(0)) => List("time").asJava
+      case _ => List("").asJava
     }
   }
 
@@ -58,30 +75,29 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor {
     * @param sender コマンド送信者
     * @return
     */
-  def issueList(sender: CommandSender): Boolean = {
+  def printIssueList(sender: CommandSender): Boolean = {
     // XMLを取得
     val fetchedXML = Utils.fetchXML(config.url + "issues.xml?key=" + config.getApiKey(sender))
 
-    if (fetchedXML.isEmpty) {
-      // 取得に失敗した旨を表示して終わる
-      sender.sendMessage("Issues not found.")
-    } else {
-      // チケット一覧の取得
-      val issues = fetchedXML.get \\ "issue"
+    fetchedXML match {
+      case None =>
+        // 取得に失敗した旨を表示
+        sender.sendMessage("Issues not found.")
+      case Some(xml) =>
+        // メッセージの送信
+        sender.sendMessage(ChatColor.AQUA + "===== Issues List =====")
+        sender.sendMessage("Project ID : Issue ID : Issue Subject")
 
-      // メッセージの送信
-      sender.sendMessage("===== Issues List =====")
-      sender.sendMessage("Project ID : Issue ID : Issue Subject")
-
-      // すべてのチケットを表示
-      issues foreach {
-        issue => {
-          val issueId = issue \ "id"
-          val pid = issue \ "project" \ "@id"
-          val subject = issue \ "subject"
-          sender.sendMessage(pid.text + " : " + issueId.text + " : " + subject.text)
+        // すべてのチケットを表示
+        val issues = xml \\ "issue"
+        issues foreach {
+          issue => {
+            val issueId = issue \ "id"
+            val pid = issue \ "project" \ "@id"
+            val subject = issue \ "subject"
+            sender.sendMessage(pid.text + " : " + issueId.text + " : " + subject.text)
+          }
         }
-      }
     }
     true
   }
@@ -97,25 +113,24 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor {
     // XMLを取得
     val fetchedXML = Utils.fetchXML(config.url + "issues.xml?project_id=" + projectId + "&key=" + config.getApiKey(sender))
 
-    if (fetchedXML.isEmpty) {
-      // 取得に失敗した旨を表示して終わる
-      sender.sendMessage("Issues not found.")
-    } else {
-      // チケット一覧の取得
-      val issues = fetchedXML.get \\ "issue"
+    fetchedXML match {
+      case None =>
+        // 取得に失敗した旨を表示
+        sender.sendMessage("Issues not found.")
+      case Some(xml) =>
+        // メッセージの送信
+        sender.sendMessage(ChatColor.AQUA + "===== Issues List =====")
+        sender.sendMessage("Issue ID : Issue Subject")
 
-      // メッセージの送信
-      sender.sendMessage("===== Issues List =====")
-      sender.sendMessage("Issue ID : Issue Subject")
-
-      // 該当プロジェクトのすべてのチケットを表示
-      issues foreach {
-        issue => {
-          val issueId = issue \ "id"
-          val subject = issue \ "subject"
-          sender.sendMessage(issueId.text + " : " + subject.text)
+        // 該当プロジェクトのすべてのチケットを表示
+        val issues = xml \\ "issue"
+        issues foreach {
+          issue => {
+            val issueId = issue \ "id"
+            val subject = issue \ "subject"
+            sender.sendMessage(issueId.text + " : " + subject.text)
+          }
         }
-      }
     }
     true
   }
@@ -131,35 +146,34 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor {
     // XMLを取得
     val fetchedXML = Utils.fetchXML(config.url + "issues/" + issueId + ".xml?key=" + config.getApiKey(sender))
 
-    if (fetchedXML.isEmpty) {
-      // 取得に失敗した旨を表示して終わる
-      sender.sendMessage("Issue ID " + issueId + " is not found.")
-    } else {
-      // チケットの取得
-      val issue = fetchedXML.get \\ "issue"
+    fetchedXML match {
+      case None =>
+        // 取得に失敗した旨を表示
+        sender.sendMessage("Issue ID " + issueId + " is not found.")
+      case Some(xml) =>
+        // パーツの分解
+        val issue = xml \\ "issue"
+        val project = issue \ "project" \ "@name"
+        val tracker = issue \ "tracker" \ "@name"
+        val status = issue \ "status" \ "@name"
+        val priority = issue \ "priority" \ "@name"
+        val subject = issue \ "subject"
+        val description = issue \ "description"
+        val startDate = issue \ "start_date"
+        val dueDate = issue \ "due_date"
+        val doneRatio = issue \ "done_ratio"
 
-      // パーツの分解
-      val project = issue \ "project" \ "@name"
-      val tracker = issue \ "tracker" \ "@name"
-      val status = issue \ "status" \ "@name"
-      val priority = issue \ "priority" \ "@name"
-      val subject = issue \ "subject"
-      val description = issue \ "description"
-      val startDate = issue \ "start_date"
-      val dueDate = issue \ "due_date"
-      val doneRatio = issue \ "done_ratio"
-
-      // メッセージの送信
-      sender.sendMessage("===== Details of Issue \"" + subject.text + "\" =====")
-      sender.sendMessage("Issue ID: " + issueId)
-      sender.sendMessage("Project name: " + project.text)
-      sender.sendMessage("Tracker: " + tracker.text)
-      sender.sendMessage("Status: " + status.text)
-      sender.sendMessage("Priority: " + priority.text)
-      sender.sendMessage("Description: " + description.text)
-      sender.sendMessage("Start date: " + startDate.text)
-      sender.sendMessage("Due date: " + dueDate.text)
-      sender.sendMessage("Done ratio: " + doneRatio.text + "%")
+        // チケットの詳細を表示
+        sender.sendMessage(ChatColor.AQUA + "===== Details of Issue \"" + subject.text + "\" =====")
+        sender.sendMessage("Issue ID : " + issueId)
+        sender.sendMessage("Project name : " + project.text)
+        sender.sendMessage("Tracker : " + tracker.text)
+        sender.sendMessage("Status : " + status.text)
+        sender.sendMessage("Priority : " + priority.text)
+        sender.sendMessage("Description : " + description.text)
+        sender.sendMessage("Start date : " + startDate.text)
+        sender.sendMessage("Due date : " + dueDate.text)
+        sender.sendMessage("Done ratio : " + doneRatio.text + "%")
     }
     true
   }
@@ -170,41 +184,12 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor {
     * @param args チェックする引数
     * @return
     */
-  def checkNewCommandArgs(sender: CommandSender, args: Array[String]): Boolean = {
-    // 各種引数を整形
-    val projectId = Utils.stringToInt(args(1))
-    val trackerId = Utils.stringToInt(args(2))
-    val priorityId = Utils.stringToInt(args(3))
-
-    val hasEmptyArgs = projectId.isEmpty || trackerId.isEmpty || priorityId.isEmpty
-
-    if (hasEmptyArgs) {
-      // 数値以外が混入したら蹴る
-      false
-    } else {
-      // projectIdのはみ出しチェック
-      // API叩いて一覧を取得
-      val fetchedXML = Utils.fetchXML(config.url + "projects.xml?key=" + config.getApiKey(sender))
-
-      if (fetchedXML.isEmpty) {
-        // 取得に失敗したら落とす
-        false
-      } else {
-        // プロジェクトID一覧を生成する
-        val projectIDs = (fetchedXML.get \\ "id").map(i => i.text)
-
-        // 範囲外のIDをチェック
-        val hasWrongArgs = !projectIDs.contains(projectId.toString) || (1 to 3).contains(trackerId.get) || (1 to 5).contains(priorityId.get)
-
-        if (!hasWrongArgs) {
-          // 範囲外のIDが指定されていた場合も終了
-          false
-        } else {
-          // 検査を通ったときだけ実行
-          true
-        }
-      }
-
+  def checkNewCommandArgs(args: Array[String]): Boolean = {
+    args match {
+      case Array(_, projectId, _*) if Utils.stringToInt(projectId).isEmpty => false
+      case Array(_, _, trackerId, _*) if Utils.stringToInt(trackerId).isEmpty => false
+      case Array(_, _, _, priorityId, _*) if Utils.stringToInt(priorityId).isEmpty => false
+      case _ => true
     }
   }
 
@@ -216,31 +201,88 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor {
     * @return
     */
   def pushNewIssue(sender: CommandSender, args: Array[String]): Boolean = {
-    // 各種引数を整形
+    // 引数を整形
     val projectId = Utils.stringToInt(args(1)).get
     val trackerId = Utils.stringToInt(args(2)).get
     val priorityId = Utils.stringToInt(args(3)).get
     val subject = args.slice(4, args.length + 1).mkString(" ")
 
+    // XMLの組み立て
     val reqXML =
       s"""<?xml version="1.0"?>
-          |<issue>
-          |  <project_id>$projectId</project_id>
-          |  <tracker_id>$trackerId</tracker_id>
-          |  <subject>$subject</subject>
-          |  <priority_id>$priorityId</priority_id>
-          |</issue>
-        """.stripMargin
+         |<issue>
+         |  <project_id>$projectId</project_id>
+         |  <tracker_id>$trackerId</tracker_id>
+         |  <subject>$subject</subject>
+         |  <priority_id>$priorityId</priority_id>
+         |</issue>
+       """.stripMargin
 
-    val headers = Map("Content-type" -> "text/xml", "X-Redmine-API-Key" -> config.getApiKey(sender))
+    // リクエストの組み立て
+    val headers = Map("Content-type" -> "text/xml; charset=UTF-8", "X-Redmine-API-Key" -> config.getApiKey(sender))
     val reqUrl = url(config.url + "issues.xml") << reqXML <:< headers
-    val res = Http(reqUrl OK as.String).apply()
+    val res = Http(reqUrl OK as.String)
 
-    if (res.isEmpty) {
-      sender.sendMessage("Failed to add new issue.")
-      true
-    } else {
-      true
+    // 結果に応じてメッセージを表示
+    res.onComplete {
+      case Success(_) => sender.sendMessage("Success!")
+      case Failure(_) => sender.sendMessage("Failed to add an issue.")
     }
+    true
+  }
+
+  /**
+    * time引数の妥当性をチェック
+    * @param args
+    * @return
+    */
+  def checkTimeCommandArgs(args: Array[String]): Boolean = {
+    args match {
+      case Array(_, issueId, _*) if Utils.stringToInt(issueId).isEmpty => false
+      case Array(_, _, hours, _*) if Utils.stringToDouble(hours).isEmpty => false
+      case Array(_, _, _, activityId, _*) if Utils.stringToInt(activityId).isEmpty => false
+      case _ => true
+    }
+  }
+
+  /**
+    * 作業時間を記録するコマンド
+    * @param sender 実行したプレイヤー
+    * @param args コマンドの引数
+    * @return
+    */
+  def createNewTimeEntry(sender: CommandSender, args: Array[String]): Boolean = {
+    // 引数を整形
+    val issueId = Utils.stringToInt(args(1)).get
+    val hours = Utils.stringToDouble(args(2)).get
+    val activityId = Utils.stringToInt(args(3)).get
+    val comments = if (args.length >= 5) {
+      args.slice(4, args.length + 1).mkString(" ")
+    } else {
+      ""
+    }
+
+    // XMLの組み立て
+    val reqXML =
+      s"""<?xml version="1.0"?>
+         |<time_entry>
+         |  <issue_id>$issueId</issue_id>
+         |  <hours>$hours</hours>
+         |  <activity_id>$activityId</activity_id>
+         |  <comments>$comments</comments>
+         |</time_entry>
+       """.stripMargin
+
+    // リクエストの組み立て
+    val headers = Map("Content-type" -> "text/xml; charset=UTF-8", "X-Redmine-API-Key" -> config.getApiKey(sender))
+    val reqUrl = url(config.url + "time_entries.xml") << reqXML <:< headers
+    val res = Http(reqUrl OK as.String)
+
+    // 結果に応じてメッセージを表示
+    res.onComplete {
+      case Success(_) => sender.sendMessage("Success!")
+      case Failure(_) => sender.sendMessage("Failed to add a time entry.")
+    }
+    true
   }
 }

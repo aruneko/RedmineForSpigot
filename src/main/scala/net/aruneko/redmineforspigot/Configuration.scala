@@ -5,6 +5,8 @@ import java.nio.file.{Files, FileSystems}
 import org.bukkit.command.CommandSender
 import org.bukkit.plugin.java.JavaPlugin
 
+import scala.util.control.Exception._
+
 /**
   * Created by aruneko on 16/03/12.
   */
@@ -33,19 +35,26 @@ class Configuration(p: JavaPlugin) {
   // RedmineURLの取得
   val url = conf.getString("url")
 
-  def getApiKey(sender: CommandSender) = {
-    if (conf.getString("apiKeys." + sender.getName).isEmpty) {
-      // 見つからなかった注意書きを出す
-      sender.sendMessage("NOTE: You don't set API Key.")
-      ""
-    } else {
-      conf.getString("apiKeys." + sender.getName)
+  def getApiKey(sender: CommandSender): String = {
+    val apiKey = catching(classOf[NullPointerException]) opt conf.getString("apiKeys." + sender.getName)
+
+    apiKey match {
+      case None =>
+        sender.sendMessage("NOTE: You don't set API Key.")
+        ""
+      case Some(key) =>
+        key
     }
   }
 
-  def setApiKey(sender: CommandSender, apiKey: String) = {
-    conf.set("apiKeys." + sender.getName, apiKey)
-    p.saveConfig
-    sender.sendMessage("Saved configuration file.")
+  def setApiKey(sender: CommandSender, apiKey: String): Boolean = {
+    if (apiKey.matches("[a-f0-9]{40}")) {
+      conf.set("apiKeys." + sender.getName, apiKey)
+      p.saveConfig
+      sender.sendMessage("Saved configuration file.")
+    } else {
+      sender.sendMessage("Incorrect API Key format.")
+    }
+    true
   }
 }
