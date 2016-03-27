@@ -2,6 +2,9 @@
 ## これなに
 Redmineをコマンドで操作するSpigotプラグインです。できることはまだ少なめ。
 
+## ダウンロード
+[Dropbox](https://www.dropbox.com/s/kza1pb94jf8cp19/RedmineForSpigot-assembly-1.0.jar?dl=0)から落としてください
+
 ## 動作環境
 - Java8
 - Spigot1.9
