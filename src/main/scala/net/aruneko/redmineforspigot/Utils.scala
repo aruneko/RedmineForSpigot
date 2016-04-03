@@ -7,12 +7,12 @@ import org.bukkit.entity.Player
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import scala.util.{Success, Failure}
+import scala.util.{Failure, Success, Try}
 import scala.util.control.Exception._
-import scala.xml.XML
-
+import scala.xml.{Elem, XML}
 import dispatch._
 import dispatch.Defaults._
+import org.bukkit.ChatColor
 
 /**
   * Created by aruneko on 16/03/12.
@@ -26,23 +26,35 @@ object Utils {
     catching(classOf[NumberFormatException]) opt str.toDouble
   }
 
-  def fetchXML(url: String) = {
-    catching(classOf[Exception]) opt XML.load(new URL(url))
+  private def fetchXml(url: String): MyEither[String, Elem] = {
+    Try{XML.load(new URL(url))} match {
+      case Success(v) => Right(v)
+      case Failure(e) => Left(ChatColor.RED + "Failed to fetch data.")
+    }
   }
 
-  def canExecCommand(sender: CommandSender, config: Configuration): Boolean = {
+  def fetchXmlByApiKey(sender: CommandSender, config: Configuration, url: String): MyEither[String, Elem] = {
+    val keyParam = if (url.contains("?")) "&key=" else "?key="
+    config.getApiKey(sender) match {
+      case Right(key) =>
+        fetchXml(config.url + url + keyParam + key)
+      case Left(e) =>
+        sender.sendMessage(e)
+        fetchXml(config.url + url)
+    }
+  }
+
+  def canExecCommand(sender: CommandSender, config: Configuration): MyEither[String, Boolean] = {
     // コマンドを実行できるかどうかを判定
     val isPlayer = sender.isInstanceOf[Player]
     val canConnectRedmine = canPingRedmine(config.url)
 
     if (!isPlayer) {
-      sender.sendMessage("Only player can execute this command.")
-      false
+      Left(ChatColor.RED + "Only player can execute this command.")
     } else if (!canConnectRedmine) {
-      sender.sendMessage("Can't connect Redmine.")
-      false
+      Left(ChatColor.RED + "Can't connect Redmine.")
     } else {
-      true
+      Right(true)
     }
   }
 

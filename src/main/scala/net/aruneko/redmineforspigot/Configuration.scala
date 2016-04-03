@@ -35,15 +35,14 @@ class Configuration(p: JavaPlugin) {
   // RedmineURLの取得
   val url = conf.getString("url")
 
-  def getApiKey(sender: CommandSender): String = {
+  def getApiKey(sender: CommandSender): MyEither[String, String] = {
     val apiKey = catching(classOf[NullPointerException]) opt conf.getString("apiKeys." + sender.getName)
 
     apiKey match {
       case None =>
-        sender.sendMessage("NOTE: You don't set API Key.")
-        ""
+        Left("NOTE: You don't set API Key.")
       case Some(key) =>
-        key
+        Right(key)
     }
   }
 

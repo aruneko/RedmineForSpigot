@@ -22,17 +22,18 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
     * @return コマンドを実行した場合true、そうでなければfalse
     */
   override def onCommand(sender: CommandSender, cmd: Command, label: String, args: Array[String]): Boolean = {
-    if (Utils.canExecCommand(sender, config)) {
-      execCommand(sender, args)
-    } else {
-      true
+    Utils.canExecCommand(sender, config) match {
+      case Right(a) => execCommand(sender, args)
+      case Left(e) =>
+        sender.sendMessage(e)
+        true
     }
   }
 
   /**
     * 実行するコマンドの振り分け
-    * @param sender
-    * @param args
+    * @param sender コマンド送信者
+    * @param args コマンドの引数
     * @return
     */
   def execCommand(sender: CommandSender, args: Array[String]): Boolean = {
@@ -53,10 +54,10 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
 
   /**
     * Tab補完の実装
-    * @param sender
-    * @param cmd
-    * @param alias
-    * @param args
+    * @param sender コマンド送信者
+    * @param cmd 送信されたコマンド
+    * @param alias コマンドの別名
+    * @param args コマンドの引数
     * @return 補完候補
     */
   override def onTabComplete(sender: CommandSender, cmd: Command, alias: String, args: Array[String]): java.util.List[String] = {
@@ -76,14 +77,11 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
     * @return
     */
   def printIssueList(sender: CommandSender): Boolean = {
-    // XMLを取得
-    val fetchedXML = Utils.fetchXML(config.url + "issues.xml?key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "issues.xml") match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Issues not found.")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // メッセージの送信
         sender.sendMessage(ChatColor.AQUA + "===== Issues List =====")
         sender.sendMessage("Project ID : Issue ID : Issue Subject")
@@ -110,14 +108,11 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
     * @return
     */
   def issueListByProjectId(sender: CommandSender, projectId: Int): Boolean = {
-    // XMLを取得
-    val fetchedXML = Utils.fetchXML(config.url + "issues.xml?project_id=" + projectId + "&key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "issues.xml?project_id=" + projectId.toString) match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Issues not found.")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // メッセージの送信
         sender.sendMessage(ChatColor.AQUA + "===== Issues List =====")
         sender.sendMessage("Issue ID : Issue Subject")
@@ -143,14 +138,11 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
     * @return
     */
   def issueDetails(sender: CommandSender, issueId: Int): Boolean = {
-    // XMLを取得
-    val fetchedXML = Utils.fetchXML(config.url + "issues/" + issueId + ".xml?key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "issues/" + issueId.toString + ".xml") match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Issue ID " + issueId + " is not found.")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // パーツの分解
         val issue = xml \\ "issue"
         val project = issue \ "project" \ "@name"
@@ -219,7 +211,12 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
        """.stripMargin
 
     // リクエストの組み立て
-    val headers = Map("Content-type" -> "text/xml; charset=UTF-8", "X-Redmine-API-Key" -> config.getApiKey(sender))
+    val headers = config.getApiKey(sender) match {
+      case Right(key) => Map("Content-type" -> "text/xml; charset=UTF-8", "X-Redmine-API-Key" -> key)
+      case Left(e) =>
+        sender.sendMessage(e)
+        Map("Content-type" -> "text/xml; charset=UTF-8")
+    }
     val reqUrl = url(config.url + "issues.xml") << reqXML <:< headers
     val res = Http(reqUrl OK as.String)
 
@@ -233,7 +230,7 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
 
   /**
     * time引数の妥当性をチェック
-    * @param args
+    * @param args コマンドの引数
     * @return
     */
   def checkTimeCommandArgs(args: Array[String]): Boolean = {
@@ -274,7 +271,12 @@ class IssueCommandExecutor(config: Configuration) extends CommandExecutor with T
        """.stripMargin
 
     // リクエストの組み立て
-    val headers = Map("Content-type" -> "text/xml; charset=UTF-8", "X-Redmine-API-Key" -> config.getApiKey(sender))
+    val headers = config.getApiKey(sender) match {
+      case Right(key) => Map("Content-type" -> "text/xml; charset=UTF-8", "X-Redmine-API-Key" -> key)
+      case Left(e) =>
+        sender.sendMessage(e)
+        Map("Content-type" -> "text/xml; charset=UTF-8")
+    }
     val reqUrl = url(config.url + "time_entries.xml") << reqXML <:< headers
     val res = Http(reqUrl OK as.String)
 

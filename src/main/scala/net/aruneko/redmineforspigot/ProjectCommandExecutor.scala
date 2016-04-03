@@ -19,17 +19,18 @@ class ProjectCommandExecutor(config: Configuration) extends CommandExecutor with
     * @return コマンドを実行した場合true、そうでなければfalse
     */
   override def onCommand(sender: CommandSender, cmd: Command, label: String, args: Array[String]): Boolean = {
-    if (Utils.canExecCommand(sender, config)) {
-      execCommand(sender, args)
-    } else {
-      true
+    Utils.canExecCommand(sender, config) match {
+      case Right(a) => execCommand(sender, args)
+      case Left(e) =>
+        sender.sendMessage(e)
+        true
     }
   }
 
   /**
     * 実行するコマンドの振り分け
-    * @param sender
-    * @param args
+    * @param sender コマンド送信者
+    * @param args コマンドの引数
     * @return
     */
   def execCommand(sender: CommandSender, args: Array[String]): Boolean = {
@@ -44,10 +45,10 @@ class ProjectCommandExecutor(config: Configuration) extends CommandExecutor with
 
   /**
     * Tab補完の実装
-    * @param sender
-    * @param cmd
-    * @param alias
-    * @param args
+    * @param sender コマンド送信者
+    * @param cmd 送信されたコマンド
+    * @param alias コマンドの別名
+    * @param args コマンドの引数
     * @return 補完候補
     */
   override def onTabComplete(sender: CommandSender, cmd: Command, alias: String, args: Array[String]): java.util.List[String] = {
@@ -65,14 +66,11 @@ class ProjectCommandExecutor(config: Configuration) extends CommandExecutor with
     * @return
     */
   def projectList(sender: CommandSender): Boolean = {
-    // XMLの取得
-    val fetchedXML = Utils.fetchXML(config.url + "projects.xml?key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "projects.xml") match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Projects not found.")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // メッセージの送信
         sender.sendMessage(ChatColor.AQUA + "===== Projects List =====")
         sender.sendMessage("Project ID : Project Name")
@@ -97,14 +95,11 @@ class ProjectCommandExecutor(config: Configuration) extends CommandExecutor with
     * @return
     */
   def projectDetails(sender: CommandSender, projectId: Int): Boolean = {
-    // XMLの取得
-    val fetchedXML = Utils.fetchXML(config.url + "projects/" + projectId + ".xml?key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "projects/" + projectId + ".xml") match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Project ID " + projectId + " is not found.")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // パーツの分解
         val project = xml \\ "project"
         val name = project \ "name"

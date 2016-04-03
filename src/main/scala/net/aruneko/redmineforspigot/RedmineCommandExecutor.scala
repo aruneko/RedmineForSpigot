@@ -10,17 +10,18 @@ import collection.JavaConverters._
   */
 class RedmineCommandExecutor(config: Configuration) extends CommandExecutor with TabCompleter {
   override def onCommand(sender: CommandSender, cmd: Command, label: String, args: Array[String]): Boolean = {
-    if (Utils.canExecCommand(sender, config)) {
-      execCommand(sender, args)
-    } else {
-      true
+    Utils.canExecCommand(sender, config) match {
+      case Right(a) => execCommand(sender, args)
+      case Left(e) =>
+        sender.sendMessage(e)
+        true
     }
   }
 
   /**
     * 実行するコマンドの振り分け
-    * @param sender
-    * @param args
+    * @param sender コマンド送信者
+    * @param args コマンドの引数
     * @return
     */
   def execCommand(sender: CommandSender, args: Array[String]): Boolean = {
@@ -35,10 +36,10 @@ class RedmineCommandExecutor(config: Configuration) extends CommandExecutor with
 
   /**
     * Tab補完の実装
-    * @param sender
-    * @param cmd
-    * @param alias
-    * @param args
+    * @param sender コマンド送信者
+    * @param cmd 送信されたコマンド
+    * @param alias コマンドの別名
+    * @param args コマンドの引数
     * @return 補完候補
     */
   override def onTabComplete(sender: CommandSender, cmd: Command, alias: String, args: Array[String]): java.util.List[String] = {
@@ -54,17 +55,15 @@ class RedmineCommandExecutor(config: Configuration) extends CommandExecutor with
 
   /**
     * Activity IDの一覧を表示するコマンド
-    * @param sender
+    * @param sender コマンド送信者
     * @return
     */
   def printActivityId(sender: CommandSender): Boolean = {
-    val fetchedXML = Utils.fetchXML(config.url + "enumerations/TimeEntryActivities.xml?key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "enumerations/TimeEntryActivities.xml") match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Failed to print activity_id")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // メッセージの送信
         sender.sendMessage(ChatColor.AQUA + "===== Activity ID List =====")
         sender.sendMessage("Activity ID : Activity Name")
@@ -84,17 +83,15 @@ class RedmineCommandExecutor(config: Configuration) extends CommandExecutor with
 
   /**
     * Tracker IDの一覧を表示するコマンド
-    * @param sender
+    * @param sender コマンド送信者
     * @return
     */
   def printTrackerId(sender: CommandSender): Boolean = {
-    val fetchedXML = Utils.fetchXML(config.url + "trackers.xml?key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "trackers.xml") match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Failed to print tracker_id")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // メッセージの送信
         sender.sendMessage(ChatColor.AQUA + "===== Tracker ID List =====")
         sender.sendMessage("Tracker ID : Tracker Name")
@@ -114,17 +111,15 @@ class RedmineCommandExecutor(config: Configuration) extends CommandExecutor with
 
   /**
     * Priority IDの一覧を表示するコマンド
-    * @param sender
+    * @param sender コマンド送信者
     * @return
     */
   def printPriorityId(sender: CommandSender): Boolean = {
-    val fetchedXML = Utils.fetchXML(config.url + "enumerations/issue_priorities.xml?key=" + config.getApiKey(sender))
-
-    fetchedXML match {
-      case None =>
+    Utils.fetchXmlByApiKey(sender, config, "enumerations/issue_priorities.xml") match {
+      case Left(e) =>
         // 取得に失敗した旨を表示
-        sender.sendMessage("Failed to print priority_id")
-      case Some(xml) =>
+        sender.sendMessage(e)
+      case Right(xml) =>
         // メッセージの送信
         sender.sendMessage(ChatColor.AQUA + "===== Priority ID List =====")
         sender.sendMessage("Priority ID : Priority Name")
